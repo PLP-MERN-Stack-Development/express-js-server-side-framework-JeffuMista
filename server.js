@@ -1,9 +1,15 @@
-// server.js - Starter Express server for Week 2 assignment
-
 // Import required modules
-const express = require('express');
-const bodyParser = require('body-parser');
-const { v4: uuidv4 } = require('uuid');
+const express = require("express");
+const bodyParser = require("body-parser");
+const { v4: uuidv4 } = require("uuid");
+const connectDB = require("./config/db");
+const logger = require("./middleware/logger");
+const auth = require("./middleware/auth");
+const errorHandler = require("./middleware/errorHandler");
+const jwt = require("jsonwebtoken");
+
+//dotenv for environment variables
+require("dotenv").config();
 
 // Initialize Express app
 const app = express();
@@ -11,56 +17,72 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware setup
 app.use(bodyParser.json());
+app.use(logger);
+app.use(errorHandler);
 
-// Sample in-memory products database
-let products = [
-  {
-    id: '1',
-    name: 'Laptop',
-    description: 'High-performance laptop with 16GB RAM',
-    price: 1200,
-    category: 'electronics',
-    inStock: true
-  },
-  {
-    id: '2',
-    name: 'Smartphone',
-    description: 'Latest model with 128GB storage',
-    price: 800,
-    category: 'electronics',
-    inStock: true
-  },
-  {
-    id: '3',
-    name: 'Coffee Maker',
-    description: 'Programmable coffee maker with timer',
-    price: 50,
-    category: 'kitchen',
-    inStock: false
-  }
-];
+connectDB();
+
+//product routes
+app.use("/products", auth, require("./routes/productRoutes"));
 
 // Root route
-app.get('/', (req, res) => {
-  res.send('Welcome to the Product API! Go to /api/products to see all products.');
+app.get("/", (req, res) => {
+  res.send("Hello, World!");
 });
 
-// TODO: Implement the following routes:
-// GET /api/products - Get all products
-// GET /api/products/:id - Get a specific product
-// POST /api/products - Create a new product
-// PUT /api/products/:id - Update a product
-// DELETE /api/products/:id - Delete a product
+// GET /products - Get all products with filtering and pagination
+app.get("/products", (req, res) => {
+  const { category, page = 1, limit = 10, search } = req.query;
 
-// Example route implementation for GET /api/products
-app.get('/api/products', (req, res) => {
-  res.json(products);
+  let filteredProducts = products;
+
+  // Filter by category
+  if (category) {
+    filteredProducts = filteredProducts.filter(
+      (product) => product.category === category
+    );
+  }
+
+  // Search by name
+  if (search) {
+    filteredProducts = filteredProducts.filter((product) =>
+      product.name.toLowerCase().includes(search.toLowerCase())
+    );
+  }
+  // Pagination
+  const startIndex = (page - 1) * limit;
+  const endIndex = page * limit;
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+  res.json({
+    page: parseInt(page),
+    limit: parseInt(limit),
+    total: filteredProducts.length,
+    products: paginatedProducts,
+  });
 });
 
-// TODO: Implement custom middleware for:
-// - Request logging
-// - Authentication
-// - Error handling
+// GET /products/stats - Get product statistics by category
+app.get("/products/stats", (req, res) => {
+  const stats = products.reduce((acc, product) => {
+    acc[product.category] = (acc[product.category] || 0) + 1;
+    return acc;
+  }, {});
+
+  res.json(stats);
+});
+
+// Route to generate a test JWT token
+app.get("/generate-test-token", (req, res) => {
+  const payload = {
+    user: {
+      id: "123",
+      name: "Test User",
+    },
+  };
+
+  const token = jwt.sign(payload, process.env.JWT_SECRET);
+  res.json({ token });
+});
 
 // Start the server
 app.listen(PORT, () => {
@@ -68,4 +90,4 @@ app.listen(PORT, () => {
 });
 
 // Export the app for testing purposes
-module.exports = app; 
+module.exports = app;
